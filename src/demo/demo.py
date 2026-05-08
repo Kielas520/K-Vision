@@ -31,6 +31,8 @@ class InferenceEngine:
                 providers = ['CUDAExecutionProvider'] if self.device.type == 'cuda' else ['CPUExecutionProvider']
                 self.session = ort.InferenceSession(str(self.model_path), providers=providers)
                 self.input_name = self.session.get_inputs()[0].name
+                # 【加上这行测试】
+                print("\n[关键检查] 当前 ONNX 实际使用的提供者:", self.session.get_providers())
             elif self.type == "pytorch":
                 self.model = RMDetector(reg_max=self.reg_max, num_classes=self.num_classes).to(self.device)
                 self.model.load_state_dict(torch.load(self.model_path, map_location=self.device))

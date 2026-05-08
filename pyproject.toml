@@ -6,7 +6,6 @@ readme = "README.md"
 requires-python = "==3.11.*"
 authors = [{ name = "Kielas", email = "c1470759@outlook.com" }]
 
-# 基础通用依赖（不含 torch，由下方 groups 注入）
 dependencies = [
     "cvbridge3>=1.1",
     "numpy>=1.24.0,<2.0.0",
@@ -19,18 +18,22 @@ dependencies = [
     "onnx",
     "onnxsim==0.4.36",
     "onnxscript",
-    "onnxruntime<1.24.0",
+
     # --- 平台特定的依赖直接写在主列表，依靠 sys_platform 自动触发 ---
-    # Windows
+    # Windows (CUDA 环境)
     "torch>=2.5.0; sys_platform == 'win32'",
     "torchvision>=0.19.0; sys_platform == 'win32'",
     "onnxruntime-gpu>=1.18.0,<1.20.0; sys_platform == 'win32'",
-    # macOS
+    
+    # macOS (Apple Silicon 或 Intel Mac，只能用 CPU 版)
     "torch>=2.5.0; sys_platform == 'darwin'",
     "torchvision>=0.19.0; sys_platform == 'darwin'",
-    # Linux
+    "onnxruntime<1.24.0; sys_platform == 'darwin'", # ✔️ CPU 版专门留给 Mac
+    
+    # Linux (通常实车部署或服务器训练也是 CUDA 环境)
     "torch>=2.5.0; sys_platform == 'linux'",
     "torchvision>=0.19.0; sys_platform == 'linux'",
+    "onnxruntime-gpu>=1.19.2; sys_platform == 'linux'", # ✔️ 补上平台标识
 ]
 
 [tool.uv]

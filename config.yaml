@@ -95,14 +95,14 @@ kielas_rm_train:
     device: "cuda"              
     num_classes: 13             # 影响：网络分类头的输出通道数
     negative_class_id: 12       # 影响：指定纯负样本/背景的类别ID，计算损失时该类别不参与位姿回归
-    batch_size: 128             # 影响：每次更新权重的样本数。越大梯度越稳定，但对显存要求极高
+    batch_size: 64             # 影响：每次更新权重的样本数。越大梯度越稳定，但对显存要求极高
     prefetch_factor: 12         # 影响：DataLoader预读取数据的批次数，缓解CPU数据增强跟不上GPU运算的瓶颈
     epochs: 200                 # 影响：总训练轮数
     weight_decay: 0.01          # 影响：L2正则化系数。防止模型权重过大导致过拟合
     save_dir: "./model_res"     # 模型权重和曲线保存路径
     input_size: [416, 416]      # 影响：网络输入分辨率。416能在算力受限平台上保证极高的推理帧率
     strides: [8, 16, 32]        # 影响：FPN三个输出特征图相对于输入图像的下采样倍率
-    reg_max: 1                 # 影响：DFL(Distribution Focal Loss)的离散分布范围，决定了关键点回归的最大偏移自由度
+    reg_max: 16                 # 影响：DFL(Distribution Focal Loss)的离散分布范围，决定了关键点回归的最大偏移自由度
 
     continue:
       path: "./model_res/best_model.pth" # 影响：断点续训时的权重读取路径
@@ -191,6 +191,6 @@ kielas_rm_demo:
   negative_class_id: 12                 
   input_size: [416, 416]
   strides: [8, 16, 32]          # 影响：解码网络输出特征图所需的步长信息
-  reg_max: 1
+  reg_max: 16
   conf_threshold: 0.7           # 影响：实车测试时过滤低质量预测。高于训练时的0.5以保证赛场输出纯净度
   kpt_dist_thresh: 15.0         # 影响：实车推理阶段的NMS过滤阈值

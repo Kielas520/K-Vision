@@ -223,7 +223,7 @@ def keypoint_nms(pts, scores, dist_thresh=15.0):
 
     return torch.tensor(keep, dtype=torch.int64, device=pts.device)
 
-def decode_tensor(tensor, is_pred=True, class_tensor=None, conf_threshold=0.5, kpt_dist_thresh=15.0, grid_size=(52, 52), reg_max=16, img_size=(416, 416), num_classes=12):
+def decode_tensor(tensor, is_pred=True, class_tensor=None, conf_threshold=0.5, kpt_dist_thresh=15.0, grid_size=(52, 52), reg_max=16, img_size=(416, 416), num_classes=12, negative_class_id=12):
     batch_size = tensor.shape[0]
     grid_w, grid_h = grid_size
     img_w, img_h = img_size
@@ -244,7 +244,14 @@ def decode_tensor(tensor, is_pred=True, class_tensor=None, conf_threshold=0.5, k
     batch_results = []
     
     for b in range(batch_size):
-        mask = conf[b] >= conf_threshold
+        if is_pred:
+            # === 【核心修改】===
+            # 不仅置信度要达标，并且类别绝对不能是负样本（12）！
+            mask = (conf[b] >= conf_threshold) & (classes[b] != negative_class_id)
+        else:
+            # GT 模式不变
+            mask = conf[b] >= conf_threshold
+            
         if not mask.any():
             batch_results.append([])
             continue
@@ -254,15 +261,29 @@ def decode_tensor(tensor, is_pred=True, class_tensor=None, conf_threshold=0.5, k
         item_classes = classes[b, grid_y, grid_x].float()
         
         if is_pred:
-            # 预测模式下的连续分布还原
-            pose_start = num_classes
-            pose_end = num_classes + 8 * reg_max
-            raw_pose_dist = tensor[b, pose_start:pose_end, grid_y, grid_x].T 
-            raw_pose_dist = raw_pose_dist.view(-1, 8, reg_max)
+            # === 【修改开始】 ===
+            expected_raw_channels = num_classes + 8 * reg_max
+            expected_fused_channels = num_classes + 8
             
-            prob = F.softmax(raw_pose_dist, dim=-1)
-            project = torch.arange(reg_max, dtype=torch.float32, device=tensor.device)
-            decoded_pose_offset = (prob * project).sum(dim=-1) - (reg_max // 2)
+            if tensor.shape[1] == expected_raw_channels:
+                # 【情况A：Python 原生推理】模型还没融合 DFL，自己做 Softmax
+                pose_start = num_classes
+                pose_end = num_classes + 8 * reg_max
+                raw_pose_dist = tensor[b, pose_start:pose_end, grid_y, grid_x].T 
+                raw_pose_dist = raw_pose_dist.view(-1, 8, reg_max)
+                
+                prob = F.softmax(raw_pose_dist, dim=-1)
+                project = torch.arange(reg_max, dtype=torch.float32, device=tensor.device)
+                decoded_pose_offset = (prob * project).sum(dim=-1) - (reg_max // 2)
+                
+            elif tensor.shape[1] == expected_fused_channels:
+                # 【情况B：ONNX 引擎推理】模型在导出时已经融合了 DFL，直接取走坐标即可！
+                pose_start = num_classes
+                pose_end = num_classes + 8
+                decoded_pose_offset = tensor[b, pose_start:pose_end, grid_y, grid_x].T
+                
+            else:
+                raise ValueError(f"无法识别的模型输出维度: {tensor.shape[1]}")
         else:
             # GT 模式：自动兼容 9维 (1 conf + 8 pose) 或 13维 (1 conf + 4 box + 8 pose)
             if tensor.shape[1] == 9:
