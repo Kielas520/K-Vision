@@ -18,22 +18,22 @@ dependencies = [
     "onnx",
     "onnxsim==0.4.36",
     "onnxscript",
-
     # --- 平台特定的依赖直接写在主列表，依靠 sys_platform 自动触发 ---
     # Windows (CUDA 环境)
     "torch>=2.5.0; sys_platform == 'win32'",
     "torchvision>=0.19.0; sys_platform == 'win32'",
     "onnxruntime-gpu>=1.18.0,<1.20.0; sys_platform == 'win32'",
-    
     # macOS (Apple Silicon 或 Intel Mac，只能用 CPU 版)
     "torch>=2.5.0; sys_platform == 'darwin'",
     "torchvision>=0.19.0; sys_platform == 'darwin'",
     "onnxruntime<1.24.0; sys_platform == 'darwin'", # ✔️ CPU 版专门留给 Mac
-    
     # Linux (通常实车部署或服务器训练也是 CUDA 环境)
     "torch>=2.5.0; sys_platform == 'linux'",
     "torchvision>=0.19.0; sys_platform == 'linux'",
     "onnxruntime-gpu>=1.19.2; sys_platform == 'linux'", # ✔️ 补上平台标识
+    "fastapi>=0.136.1",
+    "uvicorn>=0.47.0",
+    "websockets>=16.0",
 ]
 
 [tool.uv]
