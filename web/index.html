@@ -1,40 +1,258 @@
 <!DOCTYPE html>
-<html>
+<html lang="zh-CN">
 <head>
     <meta charset="UTF-8">
-    <title>K-Vision Web Console</title>
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/xterm@5.1.0/css/xterm.css" />
-    <script src="https://cdn.jsdelivr.net/npm/xterm@5.1.0/lib/xterm.js"></script>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>RM Vision WebUI</title>
+    <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://unpkg.com/xterm@5.3.0/css/xterm.css" />
+    <script src="https://unpkg.com/xterm@5.3.0/lib/xterm.js"></script>
+    <script src="https://unpkg.com/xterm-addon-fit@0.8.0/lib/xterm-addon-fit.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/js-yaml/4.1.0/js-yaml.min.js"></script>
     <style>
-        body { background: #1e1e1e; margin: 0; padding: 20px; height: 100vh; overflow: hidden; }
-        #terminal { height: 100%; }
+        /* 隐藏滚动条但保留滚动功能 */
+        .no-scrollbar::-webkit-scrollbar { display: none; }
+        .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+        .xterm .xterm-viewport { overflow-y: auto !important; }
     </style>
 </head>
-<body>
-    <div id="terminal"></div>
-    <script>
-        const term = new Terminal({
-            cursorBlink: true,
-            fontSize: 14,
-            fontFamily: 'Consolas, monospace',
-            theme: { background: '#1e1e1e' }
-        });
-        term.open(document.getElementById('terminal'));
+<body class="bg-gray-900 text-gray-200 h-screen overflow-hidden flex">
 
-        const socket = new WebSocket(`ws://${window.location.host}/ws/terminal`);
+<div id="app" class="flex w-full h-full">
+    <div class="w-64 bg-gray-800 flex flex-col shadow-xl z-10 border-r border-gray-700">
+        <div class="p-6 text-xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-cyan-400 to-blue-500 border-b border-gray-700">
+            RM Vision WebUI
+        </div>
+        <nav class="flex-1 p-4 space-y-2">
+            <button @click="currentTab = 'terminal'" :class="['w-full text-left px-4 py-3 rounded-lg transition-colors', currentTab === 'terminal' ? 'bg-cyan-600 text-white' : 'hover:bg-gray-700 text-gray-300']">
+                📺 任务终端 (Terminal)
+            </button>
+            <button @click="currentTab = 'config'" :class="['w-full text-left px-4 py-3 rounded-lg transition-colors', currentTab === 'config' ? 'bg-cyan-600 text-white' : 'hover:bg-gray-700 text-gray-300']">
+                ⚙️ 参数配置 (Config)
+            </button>
+            <button @click="currentTab = 'visual'" :class="['w-full text-left px-4 py-3 rounded-lg transition-colors', currentTab === 'visual' ? 'bg-cyan-600 text-white' : 'hover:bg-gray-700 text-gray-300']">
+                📊 训练看图 (Visualizer)
+            </button>
+        </nav>
+        <div class="p-4 border-t border-gray-700 text-sm text-gray-500">
+            状态: <span :class="wsConnected ? 'text-green-400' : 'text-red-400'">{{ wsConnected ? '已连接' : '未连接' }}</span>
+        </div>
+    </div>
 
-        socket.onmessage = (event) => {
-            term.write(event.data);
-        };
+    <div class="flex-1 flex flex-col h-full bg-gray-900 relative">
+        
+        <div v-show="currentTab === 'terminal'" class="flex flex-col h-full p-6">
+            <div class="flex flex-wrap gap-3 mb-4 bg-gray-800 p-4 rounded-xl border border-gray-700">
+                <button @click="startTask('src.data_process.process')" class="px-4 py-2 bg-blue-600 hover:bg-blue-500 rounded-md font-medium transition-colors">🧹 数据预处理</button>
+                <button @click="startTask('src.training.train')" class="px-4 py-2 bg-green-600 hover:bg-green-500 rounded-md font-medium transition-colors">🚀 开启训练</button>
+                <button @click="startTask('src.training.export')" class="px-4 py-2 bg-purple-600 hover:bg-purple-500 rounded-md font-medium transition-colors">📦 导出模型</button>
+                <button @click="startTask('src.demo.demo')" class="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 rounded-md font-medium transition-colors">🎥 实时推理</button>
+                <div class="flex-1"></div>
+                <button @click="stopTask" class="px-4 py-2 bg-red-600 hover:bg-red-500 rounded-md font-medium transition-colors flex items-center shadow-lg shadow-red-900/50">
+                    🛑 安全中断 (Ctrl+C)
+                </button>
+            </div>
+            <div class="flex-1 bg-black rounded-xl p-2 border border-gray-700 overflow-hidden shadow-inner">
+                <div id="terminal-container" class="w-full h-full"></div>
+            </div>
+        </div>
 
-        // term.onData 会捕捉用户在网页按下的每一个键（如 1, 2, Enter, Ctrl+C）
-        term.onData(data => {
-            socket.send(data);
-        });
+        <div v-if="currentTab === 'config'" class="flex flex-col h-full p-6">
+            <div class="flex justify-between items-center mb-4">
+                <h2 class="text-xl font-bold text-gray-200">config.yaml 实时编辑器</h2>
+                <button @click="saveConfig" class="px-6 py-2 bg-cyan-600 hover:bg-cyan-500 rounded-md font-medium transition-colors">💾 保存配置</button>
+            </div>
+            <textarea v-model="configText" class="flex-1 bg-gray-800 text-green-400 p-4 rounded-xl border border-gray-700 font-mono text-sm focus:outline-none focus:ring-2 focus:ring-cyan-500 resize-none no-scrollbar shadow-inner"></textarea>
+        </div>
 
-        socket.onclose = () => {
-            term.write('\r\n\x1b[31m[Backend Disconnected]\x1b[0m');
-        };
-    </script>
+        <div v-if="currentTab === 'visual'" class="flex flex-col h-full p-6 overflow-y-auto no-scrollbar">
+            <div class="flex justify-between items-center mb-6">
+                <h2 class="text-xl font-bold text-gray-200">训练曲线与特征监控</h2>
+                <button @click="refreshImages" class="px-4 py-2 bg-gray-700 hover:bg-gray-600 rounded-md font-medium transition-colors">🔄 刷新图像</button>
+            </div>
+            
+            <div class="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-6">
+                <div v-for="img in imageList" :key="img.id" class="bg-gray-800 rounded-xl overflow-hidden border border-gray-700 shadow-lg">
+                    <div class="p-3 bg-gray-700/50 border-b border-gray-700 text-sm font-medium text-gray-300">
+                        {{ img.title }}
+                    </div>
+                    <div class="p-2 aspect-video flex items-center justify-center bg-gray-900">
+                        <img :src="img.url + '?t=' + timestamp" @error="handleImageError" class="max-w-full max-h-full object-contain" alt="暂无数据">
+                    </div>
+                </div>
+            </div>
+        </div>
+
+    </div>
+</div>
+
+<script>
+    const { createApp, ref, onMounted, nextTick } = Vue;
+
+    createApp({
+        setup() {
+            const currentTab = ref('terminal');
+            const wsConnected = ref(false);
+            const configText = ref('');
+            const timestamp = ref(Date.now());
+            let ws = null;
+            let term = null;
+            let fitAddon = null;
+
+            // 后端 API 基础地址 (假设前后端在同一机器运行)
+            const API_BASE = 'http://127.0.0.1:8000';
+            const WS_BASE = 'ws://127.0.0.1:8000/ws/terminal';
+
+            // 预定义的监控图像列表
+            const imageList = ref([
+                { id: 'loss_total', title: '总损失 (Total Loss)', url: `${API_BASE}/model_res/loss_total.png` },
+                { id: 'loss_pose', title: '位姿损失 (Pose Loss)', url: `${API_BASE}/model_res/loss_pose.png` },
+                { id: 'val_pck', title: '验证集 PCK@0.5', url: `${API_BASE}/model_res/val_pck.png` },
+                { id: 'train_sample_1', title: '训练集样例对比 1', url: `${API_BASE}/model_res/train_sample_1/inference_result.png` },
+                { id: 'val_sample_1', title: '验证集样例对比 1', url: `${API_BASE}/model_res/val_sample_1/inference_result.png` },
+                { id: 'features_p3', title: 'P3 特征图 (Neck)', url: `${API_BASE}/model_res/train_sample_1/features_neck_conv_f3.png` }
+            ]);
+
+            // 1. 初始化终端
+            const initTerminal = () => {
+                term = new Terminal({
+                    theme: { background: '#000000', foreground: '#e5e7eb' },
+                    fontFamily: 'Menlo, Monaco, "Courier New", monospace',
+                    fontSize: 14,
+                    convertEol: true,
+                    cursorBlink: true // 开启光标闪烁，更像真终端
+                });
+                fitAddon = new FitAddon.FitAddon();
+                term.loadAddon(fitAddon);
+                
+                const container = document.getElementById('terminal-container');
+                term.open(container);
+                fitAddon.fit();
+
+                window.addEventListener('resize', () => {
+                    if (currentTab.value === 'terminal') {
+                        fitAddon.fit();
+                    }
+                });
+
+                // 【核心修改】：监听你在网页终端里的键盘按键
+                term.onData((data) => {
+                    if (wsConnected.value && currentTab.value === 'terminal') {
+                        // 加上 input: 前缀发送给后端
+                        ws.send('input:' + data);
+                        
+                        // 终端本地回显 (Local Echo)：让你能看到自己按下了什么
+                        if (data === '\r') {
+                            term.write('\r\n');
+                        } else if (data === '\x7F') { // 处理退格键 (Backspace)
+                            term.write('\b \b');
+                        } else {
+                            term.write(data);
+                        }
+                    }
+                });
+
+                connectWebSocket();
+            };
+
+            // 2. WebSocket 连接
+            const connectWebSocket = () => {
+                ws = new WebSocket(WS_BASE);
+                ws.onopen = () => {
+                    wsConnected.value = true;
+                    term.writeln('\x1b[32m[WebUI] 成功连接到后端调度服务。\x1b[0m');
+                };
+                ws.onmessage = (event) => {
+                    term.write(event.data);
+                };
+                ws.onclose = () => {
+                    wsConnected.value = false;
+                    term.writeln('\x1b[31m[WebUI] 后端连接已断开，正在尝试重连...\x1b[0m');
+                    setTimeout(connectWebSocket, 3000);
+                };
+            };
+
+            // 3. 任务控制
+            const startTask = (moduleName) => {
+                if (ws && ws.readyState === WebSocket.OPEN) {
+                    ws.send(`start:${moduleName}`);
+                }
+            };
+
+            const stopTask = () => {
+                if (ws && ws.readyState === WebSocket.OPEN) {
+                    ws.send('stop');
+                }
+            };
+
+            // 4. 配置读写
+            const loadConfig = async () => {
+                try {
+                    const res = await fetch(`${API_BASE}/api/config`);
+                    const json = await res.json();
+                    if (json.status === 'success') {
+                        // 将 JSON 对象转回 YAML 文本展示
+                        configText.value = jsyaml.dump(json.data);
+                    }
+                } catch (e) {
+                    console.error("加载配置失败:", e);
+                }
+            };
+
+            const saveConfig = async () => {
+                try {
+                    // 解析当前文本域的 YAML
+                    const configObj = jsyaml.load(configText.value);
+                    const res = await fetch(`${API_BASE}/api/config`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ config: configObj })
+                    });
+                    const result = await res.json();
+                    if(result.status === 'success') {
+                        alert('配置保存成功！');
+                    } else {
+                        alert('保存失败: ' + result.message);
+                    }
+                } catch (e) {
+                    alert("YAML 格式错误，请检查！\n" + e.message);
+                }
+            };
+
+            // 5. 看板图片刷新
+            const refreshImages = () => {
+                timestamp.value = Date.now();
+            };
+
+            const handleImageError = (e) => {
+                // 如果图片还没生成，隐藏它或者显示占位
+                e.target.style.opacity = 0.3;
+            };
+
+            // 监听 Tab 切换，确保终端大小自适应
+            Vue.watch(currentTab, (newTab) => {
+                if (newTab === 'terminal' && fitAddon) {
+                    nextTick(() => fitAddon.fit());
+                } else if (newTab === 'config') {
+                    loadConfig();
+                } else if (newTab === 'visual') {
+                    refreshImages();
+                }
+            });
+
+            onMounted(() => {
+                initTerminal();
+                loadConfig();
+            });
+
+            return {
+                currentTab, wsConnected, configText, imageList, timestamp,
+                startTask, stopTask, saveConfig, refreshImages, handleImageError
+            };
+        }
+    }).mount('#app');
+</script>
+
 </body>
 </html>
