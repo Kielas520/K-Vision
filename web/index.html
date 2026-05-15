@@ -1,78 +1,40 @@
 <!DOCTYPE html>
-<html lang="zh-CN">
+<html>
 <head>
     <meta charset="UTF-8">
-    <title>K-Vision 控制面板</title>
-    <link href="https://cdn.bootcdn.net/ajax/libs/twitter-bootstrap/5.3.0/css/bootstrap.min.css" rel="stylesheet">
-    <script src="https://cdn.bootcdn.net/ajax/libs/marked/4.3.0/marked.min.js"></script>
+    <title>K-Vision Web Console</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/xterm@5.1.0/css/xterm.css" />
+    <script src="https://cdn.jsdelivr.net/npm/xterm@5.1.0/lib/xterm.js"></script>
     <style>
-        body { background: #f8f9fa; font-family: 'Segoe UI', system-ui; }
-        .console-box { 
-            background: #1e1e1e; color: #d4d4d4; 
-            height: 500px; overflow-y: auto; 
-            padding: 20px; border-radius: 8px;
-            font-family: 'Consolas', monospace;
-            border: 1px solid #333;
-        }
-        .card { border: none; box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1); }
-        .btn-cmd { margin-bottom: 10px; text-align: left; }
+        body { background: #1e1e1e; margin: 0; padding: 20px; height: 100vh; overflow: hidden; }
+        #terminal { height: 100%; }
     </style>
 </head>
 <body>
-<div class="container py-5">
-    <div class="row g-4">
-        <div class="col-md-4">
-            <div class="card p-4">
-                <h4 class="mb-4 text-primary">K-Vision 任务管理</h4>
-                <button class="btn btn-outline-dark btn-cmd" onclick="runTask('1')">1. 数据预处理</button>
-                <button class="btn btn-outline-dark btn-cmd" onclick="runTask('2')">2. 开启模型训练</button>
-                <button class="btn btn-outline-dark btn-cmd" onclick="runTask('3')">3. 模型格式导出</button>
-                <button class="btn btn-outline-dark btn-cmd" onclick="runTask('4')">4. 实时推理演示</button>
-                <hr>
-                <div class="text-muted small">状态: <span id="status">等待指令</span></div>
-            </div>
-        </div>
+    <div id="terminal"></div>
+    <script>
+        const term = new Terminal({
+            cursorBlink: true,
+            fontSize: 14,
+            fontFamily: 'Consolas, monospace',
+            theme: { background: '#1e1e1e' }
+        });
+        term.open(document.getElementById('terminal'));
 
-        <div class="col-md-8">
-            <div class="card p-4">
-                <h5 class="mb-3">执行日志 (Markdown 渲染)</h5>
-                <div id="console" class="console-box"></div>
-                <button class="btn btn-sm btn-secondary mt-3" onclick="clearConsole()">清空日志</button>
-            </div>
-        </div>
-    </div>
-</div>
+        const socket = new WebSocket(`ws://${window.location.host}/ws/terminal`);
 
-<script>
-    let ws = null;
-    const consoleDiv = document.getElementById('console');
-    const statusSpan = document.getElementById('status');
-
-    function runTask(id) {
-        if (ws) ws.close();
-        
-        clearConsole();
-        statusSpan.innerText = "正在连接服务器...";
-        
-        ws = new WebSocket(`ws://${window.location.host}/ws/run/${id}`);
-        
-        ws.onmessage = (event) => {
-            statusSpan.innerText = "正在运行...";
-            // 使用 Marked 将后端发来的每一行渲染为 HTML
-            const htmlContent = marked.parse(event.data);
-            consoleDiv.innerHTML += htmlContent;
-            // 自动滚动到底部
-            consoleDiv.scrollTop = consoleDiv.scrollHeight;
+        socket.onmessage = (event) => {
+            term.write(event.data);
         };
 
-        ws.onclose = () => {
-            statusSpan.innerText = "任务结束";
-        };
-    }
+        // term.onData 会捕捉用户在网页按下的每一个键（如 1, 2, Enter, Ctrl+C）
+        term.onData(data => {
+            socket.send(data);
+        });
 
-    function clearConsole() {
-        consoleDiv.innerHTML = '';
-    }
-</script>
+        socket.onclose = () => {
+            term.write('\r\n\x1b[31m[Backend Disconnected]\x1b[0m');
+        };
+    </script>
 </body>
 </html>
